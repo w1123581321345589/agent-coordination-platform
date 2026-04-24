@@ -76,7 +76,7 @@ export default function Tournaments() {
 
   const onScoreSubmit = (values: z.infer<typeof scoreSchema>) => {
     if (!scoringVariant) return;
-    scoreVariant.mutate({ id: scoringVariant, data: values }, {
+    scoreVariant.mutate({ id: expandedId || 0, data: { ...values, variantId: scoringVariant } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetTournamentQueryKey(expandedId || 0) });
         queryClient.invalidateQueries({ queryKey: getListTournamentsQueryKey() });
@@ -136,9 +136,9 @@ export default function Tournaments() {
                     </div>
                     <p className="text-sm font-medium">{t.taskDescription}</p>
                   </div>
-                  {t.winnerPattern && (
+                  {t.variants.find(v => v.winner)?.pattern && (
                     <Badge variant="secondary" className="bg-amber-500/20 text-amber-500 border-amber-500/50 flex-shrink-0">
-                      <Trophy className="h-3 w-3 mr-1" />{t.winnerPattern}
+                      <Trophy className="h-3 w-3 mr-1" />{t.variants.find(v => v.winner)?.pattern}
                     </Badge>
                   )}
                   <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${expandedId === t.id ? 'rotate-180' : ''}`} />
@@ -150,7 +150,7 @@ export default function Tournaments() {
                   {expandedLoading ? <Skeleton className="h-32 mt-4" /> : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                       {expandedData?.variants.map(v => {
-                        const isWinner = t.winnerPattern === v.pattern;
+                        const isWinner = v.winner;
                         return (
                           <Card key={v.id} className={`bg-background ${isWinner ? 'border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : ''}`}>
                             <CardHeader className="p-3 pb-0">

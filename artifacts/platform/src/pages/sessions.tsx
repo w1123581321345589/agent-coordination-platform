@@ -233,8 +233,8 @@ export default function Sessions() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={`
-                        ${session.status === 'active' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
-                          session.status === 'completed' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' : 
+                        ${session.status === 'open' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 
+                          session.status === 'closed' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' : 
                           'bg-amber-500/10 text-amber-500 border-amber-500/20'}`} data-testid={`badge-status-${session.id}`}>
                         {session.status}
                       </Badge>

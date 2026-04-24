@@ -6,7 +6,6 @@ import {
   useListContextDomains, 
   useCreateContextDomain, 
   useListShapleyValues, 
-  useComputeShapleyValue, 
   useGetDiversityStats,
   getListContextDomainsQueryKey,
   getListShapleyValuesQueryKey
@@ -42,8 +41,6 @@ export default function Context() {
   const { data: shapley, isLoading: shapleyLoading } = useListShapleyValues();
 
   const createDomain = useCreateContextDomain();
-  const computeShapley = useComputeShapleyValue();
-
   const form = useForm<z.infer<typeof domainSchema>>({
     resolver: zodResolver(domainSchema),
     defaultValues: { name: "", description: "", disclosureTier: 1, dependencies: "" }
@@ -66,12 +63,8 @@ export default function Context() {
   };
 
   const handleCompute = () => {
-    computeShapley.mutate({}, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getListShapleyValuesQueryKey() });
-        toast({ title: "Shapley values recomputed" });
-      }
-    });
+    queryClient.invalidateQueries({ queryKey: getListShapleyValuesQueryKey() });
+    toast({ title: "Shapley values refreshed" });
   };
 
   const getTierColor = (tier: number) => {
@@ -211,7 +204,7 @@ export default function Context() {
         <Card className="bg-card">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg font-mono">Shapley Values</CardTitle>
-            <Button size="sm" variant="outline" onClick={handleCompute} disabled={computeShapley.isPending}>
+            <Button size="sm" variant="outline" onClick={handleCompute}>
               <Calculator className="h-4 w-4 mr-2" />Recompute
             </Button>
           </CardHeader>
@@ -226,7 +219,7 @@ export default function Context() {
                   <Progress value={Number(s.shapleyValue) * 100} className="h-2 bg-muted/50" />
                   <div className="flex justify-between text-[10px] text-muted-foreground uppercase">
                     <span>{s.domain}</span>
-                    <span>{s.samplesCount} samples</span>
+                    <span>{s.samples} samples</span>
                   </div>
                 </div>
               ))}

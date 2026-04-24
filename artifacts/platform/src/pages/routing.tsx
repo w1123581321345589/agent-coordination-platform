@@ -91,7 +91,7 @@ export default function Routing() {
   };
 
   const toggleMapping = (id: number, isActive: boolean) => {
-    updateMapping.mutate({ id, data: { isActive } }, {
+    updateMapping.mutate({ id, data: { active: isActive } }, {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: getListRoutingMappingsQueryKey() })
     });
   };
@@ -167,7 +167,7 @@ export default function Routing() {
                     <TableCell>{m.provider}</TableCell>
                     <TableCell><Badge variant="outline">{m.model}</Badge></TableCell>
                     <TableCell className="text-sm text-muted-foreground">{m.rationale}</TableCell>
-                    <TableCell><Switch checked={m.isActive} onCheckedChange={c => toggleMapping(m.id, c)} /></TableCell>
+                    <TableCell><Switch checked={m.active} onCheckedChange={c => toggleMapping(m.id, c)} /></TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={() => removeMapping(m.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </TableCell>

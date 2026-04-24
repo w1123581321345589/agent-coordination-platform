@@ -31,7 +31,7 @@ export default function Threats() {
   const resolveEvent = useResolveThreatEvent();
 
   const handleToggleRule = (id: number, isEnabled: boolean) => {
-    updateRule.mutate({ id, data: { isEnabled } }, {
+    updateRule.mutate({ id, data: { enabled: isEnabled } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListThreatRulesQueryKey() });
         toast({ title: "Threat rule updated" });
@@ -142,7 +142,7 @@ export default function Threats() {
                     </div>
                   </div>
                   <Switch 
-                    checked={rule.isEnabled} 
+                    checked={rule.enabled} 
                     onCheckedChange={(c) => handleToggleRule(rule.id, c)} 
                     data-testid={`switch-rule-${rule.id}`}
                   />
@@ -207,7 +207,7 @@ export default function Threats() {
                   )}
                 </div>
                 <div className="flex items-center justify-end">
-                  {event.resolvedAt ? (
+                  {event.resolved ? (
                     <Badge variant="secondary" className="bg-green-500/10 text-green-500 hover:bg-green-500/20">
                       <CheckCircle className="h-3 w-3 mr-1" />
                       Resolved

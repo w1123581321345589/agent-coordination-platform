@@ -130,7 +130,7 @@ export default function Proposals() {
             <CardHeader className="pb-2">
               <div className="flex justify-between items-start mb-2">
                 <Badge variant="outline" className={getStatusColor(p.status)}>{p.status}</Badge>
-                <span className="text-xs text-muted-foreground font-mono">{new Date(p.expiresAt).toLocaleDateString()}</span>
+                <span className="text-xs text-muted-foreground font-mono">{p.expiresAt ? new Date(p.expiresAt).toLocaleDateString() : 'N/A'}</span>
               </div>
               <CardTitle className="text-lg leading-tight">{p.title}</CardTitle>
             </CardHeader>

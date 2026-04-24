@@ -276,9 +276,9 @@ export default function Recovery() {
             ) : events?.map((evt) => (
               <div key={evt.id} className="flex items-center gap-4 text-sm border-b border-border pb-3 last:border-0 last:pb-0" data-testid={`rec-event-${evt.id}`}>
                 <div className="flex-shrink-0">
-                  {evt.eventType === 'alert' && <AlertCircle className="h-4 w-4 text-amber-500" />}
-                  {evt.eventType === 'activity' && <Activity className="h-4 w-4 text-blue-500" />}
-                  {evt.eventType === 'check' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                  {evt.eventType === 'threat_fired' && <AlertCircle className="h-4 w-4 text-amber-500" />}
+                  {(evt.eventType === 'agent_paused' || evt.eventType === 'work_returned') && <Activity className="h-4 w-4 text-blue-500" />}
+                  {(evt.eventType === 'agent_claimed' || evt.eventType === 'work_completed') && <CheckCircle className="h-4 w-4 text-green-500" />}
                 </div>
                 <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <span className="font-mono text-foreground font-medium">A_{evt.agentId || 'SYS'}</span>
