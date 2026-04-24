@@ -1,0 +1,25 @@
+Will, it's built. Here's what shipped:
+
+**8 modules, 65 passing tests, ~2,000 lines of platform code, ~1,900 lines of test coverage.**
+
+The inventory:
+
+**Build 1 (A2A Protocol):** Full A2A gateway with agent capability discovery, session management, message routing, and automatic coordination claim generation from task delegations. Every A2A delegation becomes a verifiable claim in the intent graph.
+
+**Build 2 (A2A Security):** 11 threat rules firing on A2A traffic. T104-T108 are net-new A2A-specific rules (injection, capability spoofing, context poisoning, delegation loops, budget evasion). T25/T26/T39/T78/T83/T84 carry over from Aiglos. The interceptor plugs into the gateway with one line: `gateway.add_interceptor(interceptor.intercept)`. Nobody else has this. At all.
+
+**Build 3 (Recovery Router):** Full event bus. Threat fires, agent pauses, work items return to queue, domain annotation injects recovery context, healthy agent picks up the work, verification claim auto-generates. Detection to recovery in a single call.
+
+**Build 4 (Cross-Model Router):** Role-to-provider routing with performance learning. CEO reviewer goes to Opus, paranoid reviewer goes to Gemini for cross-model diversity, QA goes to DeepSeek for cost. Tracks which model-role-task combinations produce the best outcomes over time.
+
+**Build 5 (Agent Proposal Engine):** Autonomy gap clustering, proposal generation, policy lifecycle, pattern registry export. When agents repeatedly fail on the same type of task, the system proposes a new specialist. Full approve/reject/rollback/expire lifecycle.
+
+**Build 6 (Context Router + Shapley):** Domain-scoped knowledge routing with progressive disclosure tiers, dependency-based cross-domain propagation, and Monte Carlo Shapley value approximation. Detects redundant agents (Diversity Collapse paper's core problem, solved empirically).
+
+**Build 7 (Coordination Tournament):** Generates hierarchical/debate/parallel variants for every complex task. Runs all three. Composite scoring (60% quality, 20% efficiency, 20% cost). Records which pattern wins by domain and task type.
+
+**Build 8 (Meta-Learner):** Full INGEST/PROPOSE/LINT/EVOLVE lifecycle on coordination data. Proposes strategy switches when accumulated evidence shows a better pattern. Lint catches stale strategies, high-escalation patterns, and contradictions. Approve/reject/rollback with 30-day auto-expiry. Learning curve tracking.
+
+**Plus 4 strategy docs:** The forensic index, the gap-closing scope, the landscape/white space analysis, and the full company strategy (IP, business model, autonomous ops architecture, pricing).
+
+The three-line integration is in the README. Next step is filing AIGLOS-001-PROV with coordination-specific claims added and standing up the entity.

@@ -1,0 +1,1890 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Agent Coordination Platform API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: agents
+    description: A2A Agent registry and capability discovery
+  - name: sessions
+    description: A2A Session management
+  - name: messages
+    description: A2A Message routing
+  - name: threats
+    description: A2A Security threat detection
+  - name: recovery
+    description: Recovery router and event bus
+  - name: routing
+    description: Cross-model role-to-provider routing
+  - name: proposals
+    description: Agent proposal engine
+  - name: context
+    description: Context router and Shapley values
+  - name: tournaments
+    description: Coordination tournament engine
+  - name: strategies
+    description: Meta-learner strategy lifecycle
+  - name: dashboard
+    description: Platform-wide summary stats
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # ─── DASHBOARD ────────────────────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Platform-wide summary stats
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  # ─── AGENTS ──────────────────────────────────────────────────────────────────
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List all registered agents
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+    post:
+      operationId: registerAgent
+      tags: [agents]
+      summary: Register a new agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+
+  /agents/{id}:
+    get:
+      operationId: getAgent
+      tags: [agents]
+      summary: Get a single agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateAgent
+      tags: [agents]
+      summary: Update agent status or capabilities
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentBody"
+      responses:
+        "200":
+          description: Updated agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+    delete:
+      operationId: deleteAgent
+      tags: [agents]
+      summary: Remove agent from registry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /agents/capabilities:
+    get:
+      operationId: listCapabilities
+      tags: [agents]
+      summary: List all unique agent capabilities
+      responses:
+        "200":
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  # ─── SESSIONS ────────────────────────────────────────────────────────────────
+  /sessions:
+    get:
+      operationId: listSessions
+      tags: [sessions]
+      summary: List all A2A sessions
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Session"
+    post:
+      operationId: createSession
+      tags: [sessions]
+      summary: Create a new A2A session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionBody"
+      responses:
+        "201":
+          description: Created session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  /sessions/{id}:
+    get:
+      operationId: getSession
+      tags: [sessions]
+      summary: Get a single session with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateSession
+      tags: [sessions]
+      summary: Update session status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSessionBody"
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  # ─── MESSAGES ────────────────────────────────────────────────────────────────
+  /messages:
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: List messages, optionally filtered by session
+      parameters:
+        - name: sessionId
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: routeMessage
+      tags: [messages]
+      summary: Route a message between agents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageBody"
+      responses:
+        "201":
+          description: Routed message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /messages/{id}/claim:
+    post:
+      operationId: generateClaim
+      tags: [messages]
+      summary: Generate a coordination claim from a delegation message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Claim
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Claim"
+
+  # ─── THREATS ────────────────────────────────────────────────────────────────
+  /threats/rules:
+    get:
+      operationId: listThreatRules
+      tags: [threats]
+      summary: List all active threat detection rules
+      responses:
+        "200":
+          description: Rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ThreatRule"
+    post:
+      operationId: createThreatRule
+      tags: [threats]
+      summary: Create a new threat rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateThreatRuleBody"
+      responses:
+        "201":
+          description: Created rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatRule"
+
+  /threats/rules/{id}:
+    patch:
+      operationId: updateThreatRule
+      tags: [threats]
+      summary: Enable or disable a threat rule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateThreatRuleBody"
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatRule"
+
+  /threats/events:
+    get:
+      operationId: listThreatEvents
+      tags: [threats]
+      summary: List fired threat events
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ThreatEvent"
+
+  /threats/events/{id}/resolve:
+    post:
+      operationId: resolveThreatEvent
+      tags: [threats]
+      summary: Mark a threat event as resolved
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Resolved event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatEvent"
+
+  /threats/stats:
+    get:
+      operationId: getThreatStats
+      tags: [threats]
+      summary: Threat event counts by rule and severity
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatStats"
+
+  # ─── RECOVERY ────────────────────────────────────────────────────────────────
+  /recovery/work-items:
+    get:
+      operationId: listWorkItems
+      tags: [recovery]
+      summary: List all work items in the recovery queue
+      responses:
+        "200":
+          description: Work items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WorkItem"
+    post:
+      operationId: enqueueWorkItem
+      tags: [recovery]
+      summary: Enqueue a work item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkItemBody"
+      responses:
+        "201":
+          description: Enqueued item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+
+  /recovery/work-items/{id}/claim:
+    post:
+      operationId: claimWorkItem
+      tags: [recovery]
+      summary: Healthy agent claims a work item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimWorkItemBody"
+      responses:
+        "200":
+          description: Claimed item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+
+  /recovery/work-items/{id}/complete:
+    post:
+      operationId: completeWorkItem
+      tags: [recovery]
+      summary: Mark a work item as completed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Completed item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkItem"
+
+  /recovery/events:
+    get:
+      operationId: listRecoveryEvents
+      tags: [recovery]
+      summary: List all recovery bus events
+      responses:
+        "200":
+          description: Events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecoveryEvent"
+
+  # ─── ROUTING (Cross-Model) ───────────────────────────────────────────────────
+  /routing/mappings:
+    get:
+      operationId: listRoutingMappings
+      tags: [routing]
+      summary: List all role-to-provider mappings
+      responses:
+        "200":
+          description: Mappings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoutingMapping"
+    post:
+      operationId: createRoutingMapping
+      tags: [routing]
+      summary: Create a role-to-provider mapping
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoutingMappingBody"
+      responses:
+        "201":
+          description: Created mapping
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingMapping"
+
+  /routing/mappings/{id}:
+    patch:
+      operationId: updateRoutingMapping
+      tags: [routing]
+      summary: Update a routing mapping
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoutingMappingBody"
+      responses:
+        "200":
+          description: Updated mapping
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingMapping"
+    delete:
+      operationId: deleteRoutingMapping
+      tags: [routing]
+      summary: Delete a routing mapping
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /routing/performance:
+    get:
+      operationId: listRoutingPerformance
+      tags: [routing]
+      summary: Model-role-task performance learning records
+      responses:
+        "200":
+          description: Performance records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoutingPerformance"
+    post:
+      operationId: recordRoutingPerformance
+      tags: [routing]
+      summary: Record a model-role-task outcome
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoutingPerformanceBody"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingPerformance"
+
+  # ─── PROPOSALS ───────────────────────────────────────────────────────────────
+  /proposals:
+    get:
+      operationId: listProposals
+      tags: [proposals]
+      summary: List agent proposals
+      responses:
+        "200":
+          description: Proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Proposal"
+    post:
+      operationId: createProposal
+      tags: [proposals]
+      summary: Create an agent specialist proposal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProposalBody"
+      responses:
+        "201":
+          description: Created proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposal"
+
+  /proposals/{id}/approve:
+    post:
+      operationId: approveProposal
+      tags: [proposals]
+      summary: Approve a proposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Approved proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposal"
+
+  /proposals/{id}/reject:
+    post:
+      operationId: rejectProposal
+      tags: [proposals]
+      summary: Reject a proposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rejected proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposal"
+
+  /proposals/{id}/rollback:
+    post:
+      operationId: rollbackProposal
+      tags: [proposals]
+      summary: Rollback an approved proposal
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rolled back proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposal"
+
+  /proposals/patterns:
+    get:
+      operationId: listFailurePatterns
+      tags: [proposals]
+      summary: List clustered failure patterns
+      responses:
+        "200":
+          description: Patterns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FailurePattern"
+    post:
+      operationId: recordFailurePattern
+      tags: [proposals]
+      summary: Record a task failure for clustering
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFailurePatternBody"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FailurePattern"
+
+  # ─── CONTEXT (Shapley) ───────────────────────────────────────────────────────
+  /context/domains:
+    get:
+      operationId: listContextDomains
+      tags: [context]
+      summary: List knowledge domains
+      responses:
+        "200":
+          description: Domains
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ContextDomain"
+    post:
+      operationId: createContextDomain
+      tags: [context]
+      summary: Register a knowledge domain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContextDomainBody"
+      responses:
+        "201":
+          description: Created domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContextDomain"
+
+  /context/shapley:
+    get:
+      operationId: listShapleyValues
+      tags: [context]
+      summary: List Monte Carlo Shapley value records
+      responses:
+        "200":
+          description: Shapley records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ShapleyValue"
+    post:
+      operationId: computeShapleyValue
+      tags: [context]
+      summary: Compute and store Shapley value for an agent-task pair
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShapleyValueBody"
+      responses:
+        "201":
+          description: Computed value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShapleyValue"
+
+  /context/diversity:
+    get:
+      operationId: getDiversityStats
+      tags: [context]
+      summary: Get agent diversity / redundancy detection stats
+      responses:
+        "200":
+          description: Diversity stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiversityStats"
+
+  # ─── TOURNAMENTS ─────────────────────────────────────────────────────────────
+  /tournaments:
+    get:
+      operationId: listTournaments
+      tags: [tournaments]
+      summary: List coordination tournaments
+      responses:
+        "200":
+          description: Tournaments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tournament"
+    post:
+      operationId: createTournament
+      tags: [tournaments]
+      summary: Create a tournament for a task (generates 3 variants)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTournamentBody"
+      responses:
+        "201":
+          description: Created tournament
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+
+  /tournaments/{id}:
+    get:
+      operationId: getTournament
+      tags: [tournaments]
+      summary: Get tournament with all variants
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Tournament
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+
+  /tournaments/{id}/score:
+    post:
+      operationId: scoreTournamentVariant
+      tags: [tournaments]
+      summary: Record scores for a tournament variant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScoreVariantBody"
+      responses:
+        "200":
+          description: Updated tournament
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+
+  /tournaments/patterns/winners:
+    get:
+      operationId: listWinnerPatterns
+      tags: [tournaments]
+      summary: Which coordination pattern wins by domain and task type
+      responses:
+        "200":
+          description: Winner patterns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WinnerPattern"
+
+  # ─── STRATEGIES (Meta-Learner) ───────────────────────────────────────────────
+  /strategies:
+    get:
+      operationId: listStrategies
+      tags: [strategies]
+      summary: List coordination strategies
+      responses:
+        "200":
+          description: Strategies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Strategy"
+    post:
+      operationId: createStrategy
+      tags: [strategies]
+      summary: Ingest a new coordination strategy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStrategyBody"
+      responses:
+        "201":
+          description: Created strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+  /strategies/{id}/propose:
+    post:
+      operationId: proposeStrategySwitch
+      tags: [strategies]
+      summary: Propose a strategy switch based on accumulated evidence
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Proposed strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+  /strategies/{id}/approve:
+    post:
+      operationId: approveStrategy
+      tags: [strategies]
+      summary: Approve a proposed strategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Approved strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+  /strategies/{id}/reject:
+    post:
+      operationId: rejectStrategy
+      tags: [strategies]
+      summary: Reject a proposed strategy
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rejected strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+  /strategies/{id}/rollback:
+    post:
+      operationId: rollbackStrategy
+      tags: [strategies]
+      summary: Rollback an active strategy to previous
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Rolled-back strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Strategy"
+
+  /strategies/{id}/lint:
+    get:
+      operationId: lintStrategy
+      tags: [strategies]
+      summary: Lint a strategy for staleness, high escalation, or contradictions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Lint result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LintResult"
+
+  /strategies/learning-curve:
+    get:
+      operationId: getLearningCurve
+      tags: [strategies]
+      summary: Strategy switch history and learning curve data
+      responses:
+        "200":
+          description: Learning curve
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LearningCurvePoint"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalAgents:
+          type: integer
+        activeAgents:
+          type: integer
+        activeSessions:
+          type: integer
+        messagesRouted:
+          type: integer
+        threatsDetected:
+          type: integer
+        threatsFired24h:
+          type: integer
+        pendingWorkItems:
+          type: integer
+        pendingProposals:
+          type: integer
+        activeStrategies:
+          type: integer
+        tournamentsRun:
+          type: integer
+      required:
+        - totalAgents
+        - activeAgents
+        - activeSessions
+        - messagesRouted
+        - threatsDetected
+        - threatsFired24h
+        - pendingWorkItems
+        - pendingProposals
+        - activeStrategies
+        - tournamentsRun
+
+    # ── Agents ─────────────────────────────────────────────────────────────────
+    Agent:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        role:
+          type: string
+        provider:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [active, paused, retired]
+        metadata:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        [id, name, role, provider, capabilities, status, createdAt, updatedAt]
+
+    CreateAgentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        provider:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: ["string", "null"]
+      required: [name, role, provider, capabilities]
+
+    UpdateAgentBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, paused, retired]
+        capabilities:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: ["string", "null"]
+
+    # ── Sessions ────────────────────────────────────────────────────────────────
+    Session:
+      type: object
+      properties:
+        id:
+          type: integer
+        initiatorAgentId:
+          type: integer
+        targetAgentId:
+          type: integer
+        status:
+          type: string
+          enum: [open, closed, error]
+        taskDescription:
+          type: string
+        messageCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          initiatorAgentId,
+          targetAgentId,
+          status,
+          taskDescription,
+          messageCount,
+          createdAt,
+          updatedAt,
+        ]
+
+    CreateSessionBody:
+      type: object
+      properties:
+        initiatorAgentId:
+          type: integer
+        targetAgentId:
+          type: integer
+        taskDescription:
+          type: string
+      required: [initiatorAgentId, targetAgentId, taskDescription]
+
+    UpdateSessionBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [open, closed, error]
+
+    # ── Messages ────────────────────────────────────────────────────────────────
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        fromAgentId:
+          type: integer
+        toAgentId:
+          type: integer
+        messageType:
+          type: string
+          enum: [task, delegation, response, claim, error]
+        content:
+          type: string
+        claimGenerated:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          sessionId,
+          fromAgentId,
+          toAgentId,
+          messageType,
+          content,
+          claimGenerated,
+          createdAt,
+        ]
+
+    CreateMessageBody:
+      type: object
+      properties:
+        sessionId:
+          type: integer
+        fromAgentId:
+          type: integer
+        toAgentId:
+          type: integer
+        messageType:
+          type: string
+          enum: [task, delegation, response, claim, error]
+        content:
+          type: string
+      required: [sessionId, fromAgentId, toAgentId, messageType, content]
+
+    Claim:
+      type: object
+      properties:
+        messageId:
+          type: integer
+        claimId:
+          type: string
+        claimType:
+          type: string
+        payload:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+      required: [messageId, claimId, claimType, payload, issuedAt]
+
+    # ── Threats ─────────────────────────────────────────────────────────────────
+    ThreatRule:
+      type: object
+      properties:
+        id:
+          type: integer
+        ruleCode:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        enabled:
+          type: boolean
+        firedCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        [id, ruleCode, name, description, severity, enabled, firedCount, createdAt]
+
+    CreateThreatRuleBody:
+      type: object
+      properties:
+        ruleCode:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+      required: [ruleCode, name, description, severity]
+
+    UpdateThreatRuleBody:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+
+    ThreatEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        ruleId:
+          type: integer
+        ruleCode:
+          type: string
+        agentId:
+          type: ["integer", "null"]
+        sessionId:
+          type: ["integer", "null"]
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        details:
+          type: string
+        resolved:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        [id, ruleId, ruleCode, severity, details, resolved, createdAt]
+
+    ThreatStats:
+      type: object
+      properties:
+        totalEvents:
+          type: integer
+        unresolvedEvents:
+          type: integer
+        bySeverity:
+          type: array
+          items:
+            type: object
+            properties:
+              severity:
+                type: string
+              count:
+                type: integer
+            required: [severity, count]
+        byRule:
+          type: array
+          items:
+            type: object
+            properties:
+              ruleCode:
+                type: string
+              count:
+                type: integer
+            required: [ruleCode, count]
+      required: [totalEvents, unresolvedEvents, bySeverity, byRule]
+
+    # ── Recovery ────────────────────────────────────────────────────────────────
+    WorkItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        taskDescription:
+          type: string
+        domain:
+          type: string
+        priority:
+          type: integer
+        status:
+          type: string
+          enum: [queued, claimed, completed, failed]
+        originalAgentId:
+          type: ["integer", "null"]
+        claimedByAgentId:
+          type: ["integer", "null"]
+        recoveryContext:
+          type: ["string", "null"]
+        threatEventId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        [id, taskDescription, domain, priority, status, createdAt, updatedAt]
+
+    CreateWorkItemBody:
+      type: object
+      properties:
+        taskDescription:
+          type: string
+        domain:
+          type: string
+        priority:
+          type: integer
+        originalAgentId:
+          type: ["integer", "null"]
+        threatEventId:
+          type: ["integer", "null"]
+        recoveryContext:
+          type: ["string", "null"]
+      required: [taskDescription, domain, priority]
+
+    ClaimWorkItemBody:
+      type: object
+      properties:
+        agentId:
+          type: integer
+      required: [agentId]
+
+    RecoveryEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        eventType:
+          type: string
+          enum: [threat_fired, agent_paused, work_returned, agent_claimed, work_completed]
+        workItemId:
+          type: ["integer", "null"]
+        agentId:
+          type: ["integer", "null"]
+        payload:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, eventType, payload, createdAt]
+
+    # ── Routing ─────────────────────────────────────────────────────────────────
+    RoutingMapping:
+      type: object
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        rationale:
+          type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, role, provider, model, rationale, active, createdAt]
+
+    CreateRoutingMappingBody:
+      type: object
+      properties:
+        role:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        rationale:
+          type: string
+      required: [role, provider, model, rationale]
+
+    UpdateRoutingMappingBody:
+      type: object
+      properties:
+        provider:
+          type: string
+        model:
+          type: string
+        rationale:
+          type: string
+        active:
+          type: boolean
+
+    RoutingPerformance:
+      type: object
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        taskType:
+          type: string
+        qualityScore:
+          type: number
+        costScore:
+          type: number
+        latencyMs:
+          type: integer
+        compositeScore:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        [id, role, provider, model, taskType, qualityScore, costScore, latencyMs, compositeScore, createdAt]
+
+    CreateRoutingPerformanceBody:
+      type: object
+      properties:
+        role:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        taskType:
+          type: string
+        qualityScore:
+          type: number
+        costScore:
+          type: number
+        latencyMs:
+          type: integer
+      required: [role, provider, model, taskType, qualityScore, costScore, latencyMs]
+
+    # ── Proposals ───────────────────────────────────────────────────────────────
+    Proposal:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        triggerPatternId:
+          type: ["integer", "null"]
+        proposedRole:
+          type: string
+        proposedCapabilities:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected, rolled_back, expired]
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        [id, title, description, proposedRole, proposedCapabilities, status, createdAt, updatedAt]
+
+    CreateProposalBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        triggerPatternId:
+          type: ["integer", "null"]
+        proposedRole:
+          type: string
+        proposedCapabilities:
+          type: array
+          items:
+            type: string
+      required: [title, description, proposedRole, proposedCapabilities]
+
+    FailurePattern:
+      type: object
+      properties:
+        id:
+          type: integer
+        taskType:
+          type: string
+        domain:
+          type: string
+        failureCount:
+          type: integer
+        lastFailedAt:
+          type: string
+          format: date-time
+        proposalGenerated:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        [id, taskType, domain, failureCount, lastFailedAt, proposalGenerated, createdAt]
+
+    CreateFailurePatternBody:
+      type: object
+      properties:
+        taskType:
+          type: string
+        domain:
+          type: string
+      required: [taskType, domain]
+
+    # ── Context / Shapley ────────────────────────────────────────────────────────
+    ContextDomain:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        disclosureTier:
+          type: integer
+        dependencies:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, description, disclosureTier, dependencies, createdAt]
+
+    CreateContextDomainBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        disclosureTier:
+          type: integer
+        dependencies:
+          type: array
+          items:
+            type: string
+      required: [name, description, disclosureTier, dependencies]
+
+    ShapleyValue:
+      type: object
+      properties:
+        id:
+          type: integer
+        agentId:
+          type: integer
+        taskType:
+          type: string
+        domain:
+          type: string
+        shapleyValue:
+          type: number
+        samples:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, agentId, taskType, domain, shapleyValue, samples, createdAt]
+
+    CreateShapleyValueBody:
+      type: object
+      properties:
+        agentId:
+          type: integer
+        taskType:
+          type: string
+        domain:
+          type: string
+        shapleyValue:
+          type: number
+        samples:
+          type: integer
+      required: [agentId, taskType, domain, shapleyValue, samples]
+
+    DiversityStats:
+      type: object
+      properties:
+        totalAgents:
+          type: integer
+        diversityScore:
+          type: number
+        redundancyScore:
+          type: number
+        collapsedDomains:
+          type: array
+          items:
+            type: string
+        topContributors:
+          type: array
+          items:
+            type: object
+            properties:
+              agentId:
+                type: integer
+              agentName:
+                type: string
+              avgShapley:
+                type: number
+            required: [agentId, agentName, avgShapley]
+      required:
+        [totalAgents, diversityScore, redundancyScore, collapsedDomains, topContributors]
+
+    # ── Tournaments ──────────────────────────────────────────────────────────────
+    Tournament:
+      type: object
+      properties:
+        id:
+          type: integer
+        taskDescription:
+          type: string
+        domain:
+          type: string
+        taskType:
+          type: string
+        status:
+          type: string
+          enum: [running, scored, completed]
+        winnerId:
+          type: ["integer", "null"]
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/TournamentVariant"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        [id, taskDescription, domain, taskType, status, variants, createdAt, updatedAt]
+
+    TournamentVariant:
+      type: object
+      properties:
+        id:
+          type: integer
+        tournamentId:
+          type: integer
+        pattern:
+          type: string
+          enum: [hierarchical, debate, parallel]
+        qualityScore:
+          type: ["number", "null"]
+        efficiencyScore:
+          type: ["number", "null"]
+        costScore:
+          type: ["number", "null"]
+        compositeScore:
+          type: ["number", "null"]
+        winner:
+          type: boolean
+      required: [id, tournamentId, pattern, winner]
+
+    CreateTournamentBody:
+      type: object
+      properties:
+        taskDescription:
+          type: string
+        domain:
+          type: string
+        taskType:
+          type: string
+      required: [taskDescription, domain, taskType]
+
+    ScoreVariantBody:
+      type: object
+      properties:
+        variantId:
+          type: integer
+        qualityScore:
+          type: number
+        efficiencyScore:
+          type: number
+        costScore:
+          type: number
+      required: [variantId, qualityScore, efficiencyScore, costScore]
+
+    WinnerPattern:
+      type: object
+      properties:
+        domain:
+          type: string
+        taskType:
+          type: string
+        pattern:
+          type: string
+        winCount:
+          type: integer
+        avgComposite:
+          type: number
+      required: [domain, taskType, pattern, winCount, avgComposite]
+
+    # ── Strategies ───────────────────────────────────────────────────────────────
+    Strategy:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        domain:
+          type: string
+        coordinationPattern:
+          type: string
+          enum: [hierarchical, debate, parallel, hybrid]
+        lifecycleStage:
+          type: string
+          enum: [ingest, propose, lint, evolve, active, rejected, rolled_back, expired]
+        escalationRate:
+          type: number
+        evidenceCount:
+          type: integer
+        expiresAt:
+          type: ["string", "null"]
+          format: date-time
+        previousStrategyId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        [id, name, description, domain, coordinationPattern, lifecycleStage, escalationRate, evidenceCount, createdAt, updatedAt]
+
+    CreateStrategyBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        domain:
+          type: string
+        coordinationPattern:
+          type: string
+          enum: [hierarchical, debate, parallel, hybrid]
+      required: [name, description, domain, coordinationPattern]
+
+    LintResult:
+      type: object
+      properties:
+        strategyId:
+          type: integer
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+              message:
+                type: string
+              severity:
+                type: string
+                enum: [warning, error]
+            required: [code, message, severity]
+        passed:
+          type: boolean
+      required: [strategyId, issues, passed]
+
+    LearningCurvePoint:
+      type: object
+      properties:
+        strategyId:
+          type: integer
+        strategyName:
+          type: string
+        domain:
+          type: string
+        stage:
+          type: string
+        evidenceCount:
+          type: integer
+        escalationRate:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        [strategyId, strategyName, domain, stage, evidenceCount, escalationRate, createdAt]
