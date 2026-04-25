@@ -43,6 +43,59 @@ from coordination import (
 
 
 # ---------------------------------------------------------------------------
+# BLF: Linguistic Belief State (Murphy, UBC)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class BeliefState:
+    """
+    Semi-structured linguistic belief state (BLF pattern).
+    Pairs a probability estimate with a natural-language evidence
+    summary that updates at each step, approximating sequential
+    Bayesian inference.
+    """
+    probability: float = 0.5        # p(this strategy is optimal)
+    evidence_summary: str = ""      # WHY we believe this
+    update_count: int = 0           # how many updates have been applied
+    evidence_log: list[dict] = field(default_factory=list)  # timestamped evidence trail
+
+    def update(self, new_evidence: str, new_p: float, source: str = "") -> None:
+        """
+        Bayesian-style belief update. Moves probability toward new_p
+        weighted by update count (earlier updates move more).
+        Appends evidence to the linguistic summary.
+        """
+        # Learning rate decays with evidence count (shrinkage toward stability)
+        lr = 1.0 / (1.0 + self.update_count * 0.3)
+        self.probability = self.probability + lr * (new_p - self.probability)
+        self.probability = max(0.01, min(0.99, self.probability))
+
+        self.update_count += 1
+        self.evidence_log.append({
+            "step": self.update_count,
+            "p": round(self.probability, 3),
+            "evidence": new_evidence,
+            "source": source,
+            "timestamp": time.time(),
+        })
+
+        # Rebuild linguistic summary from the last 5 evidence entries
+        recent = self.evidence_log[-5:]
+        parts = [f"[p={e['p']}] {e['evidence']}" for e in recent]
+        self.evidence_summary = " | ".join(parts)
+
+    @property
+    def is_confident(self) -> bool:
+        """Belief is confident when p > 0.75 with 5+ updates."""
+        return self.probability > 0.75 and self.update_count >= 5
+
+    @property
+    def is_uncertain(self) -> bool:
+        """Belief is uncertain when p is near 0.5 or few updates."""
+        return 0.35 < self.probability < 0.65 or self.update_count < 3
+
+
+# ---------------------------------------------------------------------------
 # Strategy Registry Entry
 # ---------------------------------------------------------------------------
 
@@ -59,6 +112,7 @@ class StrategyEntry:
     recommended_agent_count: int = 3
     recommended_models: dict[str, str] = field(default_factory=dict)  # role -> model
     confidence: float = 0.0     # 0.0 to 1.0, based on sample size + consistency
+    belief: BeliefState = field(default_factory=BeliefState)  # BLF linguistic belief
     sample_size: int = 0
     avg_outcome_score: float = 0.0
     avg_duration_seconds: float = 0.0
@@ -131,6 +185,30 @@ class CoordinationMetaLearner:
     def ingest(self, record: CoordinationRecord) -> None:
         """Ingest a completed coordination record."""
         self._records.append(record)
+
+        # BLF: Update belief on existing strategy if one exists
+        key = f"{record.task_type}:{record.domain}"
+        entry = self._registry.get(key)
+        if entry:
+            matches_strategy = record.pattern_used == entry.recommended_pattern
+            if matches_strategy and record.claim_satisfied:
+                entry.belief.update(
+                    new_evidence=f"Session confirmed: {record.pattern_used.value} scored {record.outcome_score:.2f}",
+                    new_p=min(0.95, entry.belief.probability + 0.05),
+                    source=f"record:{record.record_id}",
+                )
+            elif matches_strategy and not record.claim_satisfied:
+                entry.belief.update(
+                    new_evidence=f"Session failed: {record.pattern_used.value} scored {record.outcome_score:.2f}, claim not satisfied",
+                    new_p=max(0.05, entry.belief.probability - 0.1),
+                    source=f"record:{record.record_id}",
+                )
+            elif not matches_strategy and record.outcome_score > entry.avg_outcome_score:
+                entry.belief.update(
+                    new_evidence=f"Alternative pattern {record.pattern_used.value} outperformed: {record.outcome_score:.2f} vs avg {entry.avg_outcome_score:.2f}",
+                    new_p=max(0.1, entry.belief.probability - 0.15),
+                    source=f"record:{record.record_id}",
+                )
 
     def ingest_batch(self, records: list[CoordinationRecord]) -> int:
         """Ingest a batch of coordination records."""
@@ -409,6 +487,17 @@ class CoordinationMetaLearner:
             total_samples = sum(e.get("count", 0) for e in evidence if isinstance(e, dict))
             entry.sample_size = total_samples
             entry.confidence = min(1.0, total_samples / 50)
+
+        # BLF: Update linguistic belief state with approval evidence
+        best_evidence = max(evidence, key=lambda e: e.get("avg_score", 0)) if evidence else {}
+        entry.belief.update(
+            new_evidence=(
+                f"Strategy approved: {proposal.proposal_type}. "
+                f"{proposal.description}"
+            ),
+            new_p=min(0.95, entry.confidence + 0.1),
+            source=f"proposal:{proposal.proposal_id}",
+        )
 
         entry.last_updated = time.time()
         self._registry[key] = entry

@@ -18,6 +18,7 @@ Reuses:
 
 from __future__ import annotations
 
+import math
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -29,6 +30,41 @@ from coordination import (
     CoordinationPattern,
     CoordinationRecord,
 )
+
+
+# ---------------------------------------------------------------------------
+# BLF: Logit-space aggregation utilities (Murphy, UBC)
+# ---------------------------------------------------------------------------
+
+def _to_logit(p: float) -> float:
+    """Convert probability to logit space. Clamp to avoid infinity."""
+    p = max(0.001, min(0.999, p))
+    return math.log(p / (1.0 - p))
+
+
+def _from_logit(x: float) -> float:
+    """Convert logit back to probability."""
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def _loo_shrinkage(scores: list[float], shrink_target: float = 0.5) -> float:
+    """
+    Leave-one-out tuned shrinkage toward a target probability.
+    Prevents overconfident strategy selection from small samples.
+
+    With few trials, pulls heavily toward shrink_target (0.5 = max uncertainty).
+    With many trials, trusts the data.
+    """
+    if not scores:
+        return shrink_target
+    n = len(scores)
+    # Shrinkage weight: high when n is small, decays toward 0
+    lam = 1.0 / (1.0 + n * 0.5)
+    logits = [_to_logit(s) for s in scores]
+    avg_logit = sum(logits) / len(logits)
+    target_logit = _to_logit(shrink_target)
+    shrunk = (1 - lam) * avg_logit + lam * target_logit
+    return _from_logit(shrunk)
 
 
 # ---------------------------------------------------------------------------
@@ -196,8 +232,9 @@ class CoordinationTournament:
 
     def _select_winner(self, results: list[VariantResult]) -> tuple[str, float]:
         """
-        Select the winning variant based on a composite score.
-        Weighted: outcome quality (60%), efficiency (20%), cost (20%).
+        Select the winning variant using BLF-style logit-space aggregation.
+        Composite score combines quality (60%), efficiency (20%), cost (20%).
+        LOO-tuned shrinkage prevents overconfident selection from small samples.
         """
         if not results:
             return "", 0.0
@@ -208,11 +245,8 @@ class CoordinationTournament:
                 scored.append((r.variant_id, 0.0))
                 continue
 
-            # Normalize metrics
-            quality = r.outcome_score  # 0.0 to 1.0
-            # Efficiency: fewer escalations = better (inverse, capped)
+            quality = r.outcome_score
             efficiency = 1.0 / (1.0 + r.escalation_count)
-            # Cost: lower tokens = better (inverse, normalized)
             cost_score = 1.0 / (1.0 + r.token_cost / 10000)
 
             composite = quality * 0.6 + efficiency * 0.2 + cost_score * 0.2
@@ -223,6 +257,59 @@ class CoordinationTournament:
         winner = scored[0]
         margin = winner[1] - scored[1][1] if len(scored) > 1 else winner[1]
         return winner[0], margin
+
+    def multi_trial_run(
+        self,
+        claim: CoordinationClaim,
+        available_agents: list[AgentIdentity],
+        k_trials: int = 5,
+        max_variants: int = 3,
+    ) -> TournamentResult:
+        """
+        BLF multi-trial aggregation. Run K independent tournaments
+        and combine results in logit space with LOO-tuned shrinkage
+        toward p=0.5 to reduce variance and prevent overconfident
+        strategy selection from small samples.
+        """
+        # Run K independent trials
+        trial_results: list[TournamentResult] = []
+        for _ in range(k_trials):
+            result = self.run(claim, available_agents, max_variants)
+            trial_results.append(result)
+
+        # Aggregate per-pattern scores across trials in logit space
+        pattern_scores: dict[str, list[float]] = {}
+        for trial in trial_results:
+            for variant, result in zip(trial.variants, trial.results):
+                key = variant.pattern.value
+                if not result.error:
+                    pattern_scores.setdefault(key, []).append(result.outcome_score)
+
+        # Apply LOO-tuned shrinkage to each pattern's score distribution
+        pattern_calibrated: dict[str, float] = {}
+        for pattern, scores in pattern_scores.items():
+            pattern_calibrated[pattern] = _loo_shrinkage(scores)
+
+        # Select the calibrated winner
+        if not pattern_calibrated:
+            return trial_results[-1] if trial_results else self.run(claim, available_agents)
+
+        best_pattern = max(pattern_calibrated, key=lambda p: pattern_calibrated[p])
+
+        # Return the last trial's result but with the calibrated winner
+        final = trial_results[-1]
+        best_variant = next(
+            (v for v in final.variants if v.pattern.value == best_pattern),
+            final.variants[0] if final.variants else None,
+        )
+        if best_variant:
+            final.winner_id = best_variant.variant_id
+            final.winning_pattern = best_variant.pattern
+
+        # Store calibrated scores in metadata
+        final.margin = pattern_calibrated.get(best_pattern, 0.5)
+
+        return final
 
     @staticmethod
     def _default_executor(

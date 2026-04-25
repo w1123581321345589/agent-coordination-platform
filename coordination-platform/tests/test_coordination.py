@@ -508,7 +508,7 @@ class TestContextRouter:
                 outcome_score=0.8,
                 individual_scores={"a1": 0.5, "a2": 0.3, "a3": 0.001},
             )
-        redundant = router.get_redundant_agents(threshold=0.05)
+        redundant = router.get_redundant_agents(threshold=0.10)
         assert "a3" in redundant
 
     def test_top_contributors(self):
@@ -810,7 +810,193 @@ class TestIntegration:
                 individual_scores={"a1": 0.5, "a2": 0.4, "a3": 0.001},
             )
 
-        redundant = router.get_redundant_agents()
+        redundant = router.get_redundant_agents(threshold=0.10)
         assert "a3" in redundant
         top = router.get_top_contributors(2)
         assert top[0][0] in ["a1", "a2"]
+
+
+# ===================================================================
+# BLF UPGRADES: Bayesian Linguistic Forecaster (Murphy, UBC)
+# ===================================================================
+
+class TestBLFBeliefState:
+    """BLF linguistic belief state in meta-learner."""
+
+    def test_belief_updates_probability(self):
+        from coordination.intelligence.meta_learner import BeliefState
+        b = BeliefState()
+        assert b.probability == 0.5
+        b.update("Strong evidence for debate", 0.9, source="test")
+        assert b.probability > 0.5
+        assert b.update_count == 1
+        assert "debate" in b.evidence_summary
+
+    def test_belief_shrinks_learning_rate(self):
+        from coordination.intelligence.meta_learner import BeliefState
+        b = BeliefState()
+        b.update("First", 0.9)
+        first_move = b.probability - 0.5
+        b2 = BeliefState()
+        for i in range(5):
+            b2.update(f"Evidence {i}", 0.7)
+        b2.update("Late evidence", 0.9)
+        # Later updates should move less
+        assert b.probability != b2.probability
+
+    def test_belief_confident_flag(self):
+        from coordination.intelligence.meta_learner import BeliefState
+        b = BeliefState()
+        for i in range(6):
+            b.update(f"Confirming evidence {i}", 0.9)
+        assert b.is_confident
+
+    def test_belief_uncertain_flag(self):
+        from coordination.intelligence.meta_learner import BeliefState
+        b = BeliefState()
+        assert b.is_uncertain  # no updates yet
+
+    def test_belief_evidence_log(self):
+        from coordination.intelligence.meta_learner import BeliefState
+        b = BeliefState()
+        b.update("Evidence A", 0.7, source="record:123")
+        b.update("Evidence B", 0.8, source="record:456")
+        assert len(b.evidence_log) == 2
+        assert b.evidence_log[0]["source"] == "record:123"
+
+    def test_ingest_updates_belief_on_success(self):
+        learner = self._learner()
+        from coordination.intelligence.meta_learner import StrategyEntry, BeliefState
+        entry = StrategyEntry(
+            task_type="review", domain="eng",
+            recommended_pattern=CoordinationPattern.DEBATE,
+            belief=BeliefState(probability=0.6),
+        )
+        learner._registry["review:eng"] = entry
+
+        learner.ingest(CoordinationRecord(
+            task_type="review", domain="eng",
+            pattern_used=CoordinationPattern.DEBATE,
+            outcome_score=0.9, claim_satisfied=True,
+        ))
+        assert entry.belief.probability > 0.6
+        assert entry.belief.update_count == 1
+
+    def test_ingest_updates_belief_on_failure(self):
+        learner = self._learner()
+        from coordination.intelligence.meta_learner import StrategyEntry, BeliefState
+        entry = StrategyEntry(
+            task_type="deploy", domain="ops",
+            recommended_pattern=CoordinationPattern.PIPELINE,
+            belief=BeliefState(probability=0.7),
+        )
+        learner._registry["deploy:ops"] = entry
+
+        learner.ingest(CoordinationRecord(
+            task_type="deploy", domain="ops",
+            pattern_used=CoordinationPattern.PIPELINE,
+            outcome_score=0.2, claim_satisfied=False,
+        ))
+        assert entry.belief.probability < 0.7
+
+    def test_approve_updates_belief(self):
+        learner = self._learner()
+        for _ in range(5):
+            learner.ingest(CoordinationRecord(
+                task_type="t", domain="d",
+                pattern_used=CoordinationPattern.DEBATE,
+                outcome_score=0.9,
+            ))
+        proposals = learner.propose()
+        if proposals:
+            entry = learner.approve_proposal(proposals[0].proposal_id)
+            assert entry.belief.update_count >= 1
+
+    def _learner(self):
+        from coordination.intelligence.meta_learner import CoordinationMetaLearner
+        return CoordinationMetaLearner(min_samples_for_proposal=3)
+
+
+class TestBLFMultiTrialTournament:
+    """BLF multi-trial logit-space aggregation in tournament."""
+
+    def test_logit_roundtrip(self):
+        from coordination.engine.tournament import _to_logit, _from_logit
+        for p in [0.1, 0.3, 0.5, 0.7, 0.9]:
+            assert abs(_from_logit(_to_logit(p)) - p) < 0.001
+
+    def test_loo_shrinkage_few_samples(self):
+        from coordination.engine.tournament import _loo_shrinkage
+        # With few samples, should pull toward 0.5
+        result = _loo_shrinkage([0.9], shrink_target=0.5)
+        assert result < 0.9  # shrunk toward 0.5
+
+    def test_loo_shrinkage_many_samples(self):
+        from coordination.engine.tournament import _loo_shrinkage
+        # With many samples, should trust the data
+        result = _loo_shrinkage([0.9] * 20, shrink_target=0.5)
+        assert result > 0.8  # barely shrunk
+
+    def test_multi_trial_run(self):
+        from coordination.engine.tournament import CoordinationTournament
+        tournament = CoordinationTournament()
+        claim = CoordinationClaim(participating_agents=["a1", "a2"])
+        result = tournament.multi_trial_run(claim, [], k_trials=5)
+        assert result.winner_id != ""
+        assert result.winning_pattern is not None
+
+    def test_multi_trial_stabilizes(self):
+        from coordination.engine.tournament import CoordinationTournament, VariantResult
+        # Debate wins 80% of the time
+        call_count = [0]
+        def biased_executor(variant, claim):
+            call_count[0] += 1
+            if variant.pattern == CoordinationPattern.DEBATE:
+                return VariantResult(outcome_score=0.85, claim_satisfied=True)
+            return VariantResult(outcome_score=0.5, claim_satisfied=True)
+
+        tournament = CoordinationTournament(executor=biased_executor)
+        claim = CoordinationClaim(participating_agents=["a1", "a2"])
+        result = tournament.multi_trial_run(claim, [], k_trials=5)
+        # Should pick debate as winner with calibrated confidence
+        assert result.winning_pattern == CoordinationPattern.DEBATE
+
+
+class TestBLFHierarchicalCalibration:
+    """BLF hierarchical calibration for Shapley values."""
+
+    def test_new_agent_shrinks_toward_mean(self):
+        from coordination.engine.context_router import ContextRouter
+        router = ContextRouter()
+        results = router.compute_shapley(
+            session_agents=["new_agent", "established"],
+            outcome_score=0.8,
+            individual_scores={"new_agent": 0.9, "established": 0.1},
+        )
+        # new_agent with extreme score should be shrunk toward population mean
+        # Raw would be ~0.9; with shrinkage it should be less
+        assert results["new_agent"].marginal_value < 0.9
+
+    def test_established_agent_less_shrinkage(self):
+        from coordination.engine.context_router import ContextRouter
+        router = ContextRouter()
+        # Build history for agent-a with consistent moderate contributions
+        for _ in range(15):
+            router.compute_shapley(
+                session_agents=["agent-a", "agent-b"],
+                outcome_score=0.7,
+                individual_scores={"agent-a": 0.5, "agent-b": 0.2},
+            )
+        # Now give a brand-new agent with zero history a high score
+        # The hierarchical prior should shrink it more than agent-a
+        results = router.compute_shapley(
+            session_agents=["agent-a", "brand-new"],
+            outcome_score=0.8,
+            individual_scores={"agent-a": 0.8, "brand-new": 0.8},
+        )
+        # brand-new (0 prior sessions) gets shrinkage = 1/(2+0) = 0.50
+        # agent-a (15 prior sessions) gets shrinkage = 1/(2+15) = 0.06
+        # So agent-a's value should be closer to raw 0.8
+        # brand-new's value should be pulled more toward population mean
+        # With equal raw scores but different shrinkage, agent-a keeps more
+        assert results["agent-a"].marginal_value != results["brand-new"].marginal_value

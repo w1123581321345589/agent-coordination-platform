@@ -233,21 +233,36 @@ class ContextRouter:
                 marginals[agent_id].append(marginal)
                 coalition_value = new_value
 
-        # Average marginal contributions
+        # Average marginal contributions with hierarchical calibration
+        # (BLF pattern: shrink toward population mean to prevent
+        # hero/villain agents from small sample extremes)
         results: dict[str, ShapleyContribution] = {}
+
+        # Compute population mean for shrinkage target
+        all_marginals_flat = [v for vals in marginals.values() for v in vals]
+        population_mean = sum(all_marginals_flat) / max(len(all_marginals_flat), 1)
+
         for agent_id in session_agents:
             values = marginals.get(agent_id, [0.0])
-            avg_marginal = sum(values) / len(values)
+            raw_avg = sum(values) / len(values)
+
+            # Hierarchical shrinkage: pull toward population mean
+            # based on how much historical data we have for this agent
+            prior_count = len(self._contributions.get(agent_id, []))
+            # With 0 history, shrinkage weight = 0.5 (heavy pull toward mean)
+            # With 10+ sessions, shrinkage weight < 0.1 (trust the data)
+            shrinkage = 1.0 / (2.0 + prior_count)
+            calibrated = (1 - shrinkage) * raw_avg + shrinkage * population_mean
 
             contrib = ShapleyContribution(
                 agent_id=agent_id,
                 session_id="",  # set by caller
-                marginal_value=avg_marginal,
+                marginal_value=calibrated,
             )
             results[agent_id] = contrib
             self._contributions[agent_id].append(contrib)
 
-            # Update scope contribution score (running average)
+            # Update scope contribution score (running average of calibrated values)
             scope = self._scopes.get(agent_id)
             if scope:
                 all_contribs = self._contributions[agent_id]
